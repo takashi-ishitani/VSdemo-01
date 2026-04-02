@@ -21,9 +21,15 @@
       <section id="button" class="panel action-panel">
         <div>
           <h2>Button</h2>
-          <p>下の「3D Animation」ボタンを押して、立体図形をジャンプさせましょう。</p>
+          <p>下のボタンで3Dアニメーションの色やサイズを変えてみましょう。</p>
         </div>
-        <button class="primary-button" @click="playJump">3D Animation</button>
+        <div class="button-group">
+          <button class="primary-button" @click="playJump">3D Animation</button>
+          <button class="secondary-button" @click="changeBasicColor">基本色変更</button>
+          <button class="secondary-button" @click="changeActiveColor">アクティブカラー変更</button>
+          <button class="secondary-button" @click="changeSize(-1)">小さくする</button>
+          <button class="secondary-button" @click="changeSize(1)">大きくする</button>
+        </div>
       </section>
 
       <section id="animation" class="panel animation-panel">
@@ -62,6 +68,15 @@ const gravity = -7
 const rebound = 0.65
 const groundY = 0.5
 const maxX = 2.2
+const minScale = 0.55
+const maxScale = 2.1
+const scaleStep = 0.08
+const basicColors = [0x7c3aed, 0x22d3ee, 0xf59e0b, 0x10b981, 0xef4444]
+const activeStyles = ['blue', 'red', 'rainbow']
+let basicColorIndex = 0
+let activeStyleIndex = 0
+const activeColorMode = ref(false)
+const baseScale = ref(1)
 let lastTime = 0
 let animationFrameId = 0
 let time = 0
@@ -78,6 +93,7 @@ const lastWorldPoint = new THREE.Vector3()
 const dragVelocity = new THREE.Vector3()
 let isDragging = false
 const maxZ = 2.2
+let rainbowTexture: THREE.Texture | null = null
 
 const getPointerNDC = (event: PointerEvent) => {
   if (!renderer) return new THREE.Vector2()
@@ -214,7 +230,7 @@ const setupScene = () => {
   renderer.domElement.addEventListener('pointercancel', endDrag)
 
   const material = new THREE.MeshStandardMaterial({
-    color: 0x7c3aed,
+    color: basicColors[basicColorIndex],
     roughness: 0.35,
     metalness: 0.5,
     emissive: 0x1f1848,
@@ -249,8 +265,45 @@ const setupScene = () => {
   scene.add(floor)
 
   window.addEventListener('resize', handleResize)
+  rainbowTexture = createRainbowTexture()
   lastTime = performance.now()
   animate()
+}
+
+const createRainbowTexture = () => {
+  const canvas = document.createElement('canvas')
+  canvas.width = 512
+  canvas.height = 512
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Canvas context unavailable')
+
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+  ctx.save()
+  ctx.translate(canvas.width / 2, canvas.height / 2)
+  ctx.rotate((30 * Math.PI) / 180)
+  ctx.translate(-canvas.width / 2, -canvas.height / 2)
+
+  const gradient = ctx.createLinearGradient(-canvas.width, canvas.height / 2, canvas.width * 2, canvas.height / 2)
+  gradient.addColorStop(0.0, '#ff0000')
+  gradient.addColorStop(0.16, '#ff7f00')
+  gradient.addColorStop(0.33, '#ffff00')
+  gradient.addColorStop(0.50, '#00ff00')
+  gradient.addColorStop(0.66, '#0000ff')
+  gradient.addColorStop(0.83, '#4b0082')
+  gradient.addColorStop(1.0, '#8b00ff')
+
+  ctx.fillStyle = gradient
+  ctx.fillRect(-canvas.width, 0, canvas.width * 3, canvas.height)
+  ctx.restore()
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.RepeatWrapping
+  texture.repeat.set(2, 2)
+  texture.needsUpdate = true
+  return texture
 }
 
 const handleResize = () => {
@@ -313,12 +366,87 @@ const animate = () => {
     }
   }
 
+  if (activeColorMode.value) {
+    switch (activeStyles[activeStyleIndex]) {
+      case 'blue':
+        cube.material.color.setHSL(0.56 + Math.sin(time * 2.2) * 0.03, 0.7, 0.48)
+        cube.material.emissive.setHSL(0.56, 0.35, 0.12)
+        break
+      case 'red':
+        cube.material.color.setHSL((0.0 + Math.sin(time * 2.1) * 0.04 + 1) % 1, 0.78, 0.46)
+        cube.material.emissive.setHSL(0.0, 0.32, 0.14)
+        break
+      case 'rainbow':
+        if (cube.material.map) {
+          cube.material.map.offset.x = (time * 0.18) % 1
+          cube.material.map.needsUpdate = true
+        }
+        cube.material.color.set(0xffffff)
+        cube.material.emissive.set(0x111111)
+        break
+    }
+  }
+
   const idleScale = 1 + Math.sin(time * 1.7) * 0.05
   const wobble = 1 + Math.sin(time * 2.2) * 0.03
-  cube.scale.setScalar(idleScale * wobble)
+  cube.scale.setScalar(baseScale.value * idleScale * wobble)
 
   renderer.render(scene, camera)
   animationFrameId = requestAnimationFrame(animate)
+}
+
+const applyCurrentMaterialColor = () => {
+  if (!cube) return
+  cube.material.map = null
+  cube.material.color.set(basicColors[basicColorIndex])
+  cube.material.emissive.setScalar(0.3)
+  cube.material.needsUpdate = true
+}
+
+const applyActiveStyle = () => {
+  if (!cube) return
+  cube.material.map = null
+  switch (activeStyles[activeStyleIndex]) {
+    case 'blue':
+      cube.material.color.set(0x60a5fa)
+      cube.material.emissive.set(0x1e3a8a)
+      break
+    case 'red':
+      cube.material.color.set(0xf43f5e)
+      cube.material.emissive.set(0x881337)
+      break
+    case 'rainbow':
+      if (rainbowTexture) {
+        cube.material.map = rainbowTexture
+        cube.material.needsUpdate = true
+      }
+      cube.material.color.set(0xffffff)
+      cube.material.emissive.set(0x111111)
+      break
+  }
+}
+
+const changeBasicColor = () => {
+  if (!cube) return
+  activeColorMode.value = false
+  basicColorIndex = (basicColorIndex + 1) % basicColors.length
+  applyCurrentMaterialColor()
+  actionMessage.value = '基本色を順番に変更しました。'
+}
+
+const changeActiveColor = () => {
+  if (!cube) return
+  activeColorMode.value = true
+  activeStyleIndex = (activeStyleIndex + 1) % activeStyles.length
+  applyActiveStyle()
+  const styleLabel = activeStyles[activeStyleIndex] === 'rainbow' ? 'レインボー' : activeStyles[activeStyleIndex] === 'blue' ? 'ブルー系' : 'レッド系'
+  actionMessage.value = `アクティブカラーを ${styleLabel} に切り替えました。`
+}
+
+const changeSize = (direction: number) => {
+  if (!cube) return
+  baseScale.value = THREE.MathUtils.clamp(baseScale.value + direction * scaleStep, minScale, maxScale)
+  actionMessage.value = direction < 0 ? '少し小さくしました。' : '少し大きくしました。'
 }
 
 const playJump = () => {
@@ -420,6 +548,13 @@ main {
   flex-wrap: wrap;
 }
 
+.button-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  justify-content: flex-end;
+}
+
 .primary-button {
   border: none;
   padding: 0.95rem 1.7rem;
@@ -429,6 +564,21 @@ main {
   font-weight: 700;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.secondary-button {
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.08);
+  color: #eef2ff;
+  padding: 0.85rem 1.25rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.secondary-button:hover {
+  background: rgba(255,255,255,0.16);
+  transform: translateY(-1px);
 }
 
 .primary-button:hover {
