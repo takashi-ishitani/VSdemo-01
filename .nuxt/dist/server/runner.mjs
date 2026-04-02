@@ -1,1 +1,0 @@
-export { default } from "file:///home/takashi/Git/VSdemo-01b/node_modules/@nuxt/vite-builder/dist/vite-node-runner.mjs"
