@@ -1,0 +1,18 @@
+{
+  "name": "vsdemo-01",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "npx nuxi dev",
+    "build": "npx nuxi build",
+    "preview": "npx nuxi preview"
+  },
+  "dependencies": {
+    "nuxt": "^4.4.2",
+    "three": "^0.158.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.4"
+  }
+}
